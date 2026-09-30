@@ -70,8 +70,15 @@
 
       function renderSoldOut() {
         buyArea.innerHTML = `
+          <div id="buy-error" class="notice error" role="alert" hidden></div>
           <p>This event is sold out.</p>
           <button class="btn" type="button" disabled>Sold out</button>`;
+      }
+
+      function showBuyError(message) {
+        const box = document.getElementById('buy-error');
+        box.textContent = message;
+        box.hidden = false;
       }
 
       function renderForm() {
@@ -160,15 +167,10 @@
               event = await api(`/events/${encodeURIComponent(event.id)}`);
               renderAvailability();
               renderForm();
-              const box = document.getElementById('buy-error');
-              if (box) {
-                box.textContent = `Sorry, those tickets just sold. ${event.soldOut ? '' : 'Please choose again.'}`.trim();
-                box.hidden = false;
-              }
+              showBuyError(event.soldOut ? 'Sorry, those tickets just sold.' : 'Sorry, those tickets just sold. Please choose again.');
               return;
             }
-            errorBox.textContent = 'Something went wrong and you have not been charged. Please try again.';
-            errorBox.hidden = false;
+            showBuyError('Something went wrong and you have not been charged. Please try again.');
             button.disabled = false;
             updateSummary();
           }
