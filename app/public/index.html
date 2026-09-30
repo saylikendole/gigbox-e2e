@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Events · Gigbox</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" id="site-header"></header>
+    <main id="main">
+      <h1>What's on</h1>
+      <p class="muted">Concerts, comedy, theatre and festivals near you.</p>
+
+      <form class="filters" id="filters" role="search" aria-label="Filter events">
+        <div>
+          <label for="search">Search</label>
+          <input id="search" name="q" type="search" placeholder="Artist, event or venue" />
+        </div>
+        <div>
+          <label for="city">City</label>
+          <select id="city" name="city">
+            <option value="">All cities</option>
+            <option>Copenhagen</option>
+            <option>Aarhus</option>
+            <option>Odense</option>
+            <option>Malmö</option>
+          </select>
+        </div>
+        <div>
+          <label for="category">Category</label>
+          <select id="category" name="category">
+            <option value="">All categories</option>
+            <option>Concert</option>
+            <option>Comedy</option>
+            <option>Theatre</option>
+            <option>Festival</option>
+          </select>
+        </div>
+      </form>
+
+      <p id="result-count" class="muted" role="status" aria-live="polite"></p>
+      <div id="events"></div>
+    </main>
+
+    <script type="module">
+      import { api, escapeHtml, formatDate, formatMoney, renderHeader, requireLogin } from '/js/common.js';
+
+      const user = await requireLogin();
+      renderHeader(user, 'events');
+
+      const form = document.getElementById('filters');
+      const container = document.getElementById('events');
+      const count = document.getElementById('result-count');
+      let requestId = 0;
+
+      const card = (e) => {
+        const badge = e.soldOut
+          ? '<span class="badge soldout">Sold out</span>'
+          : e.remaining <= 10
+            ? `<span class="badge low">Only ${e.remaining} left</span>`
+            : '';
+        return `
+          <li>
+            <article class="event-card" data-category="${escapeHtml(e.category)}" data-event-id="${e.id}">
+              <div class="band"></div>
+              <div class="body">
+                <span class="badge category">${escapeHtml(e.category)}</span>
+                <h2><a href="/event?id=${encodeURIComponent(e.id)}">${escapeHtml(e.name)}</a></h2>
+                <p class="meta">${escapeHtml(e.artist)}</p>
+                <p class="meta">${escapeHtml(e.venue)}, ${escapeHtml(e.city)}</p>
+                <p class="meta"><time datetime="${e.startsAt}">${formatDate(e.startsAt)}</time></p>
+                <div class="foot">
+                  <span class="price">From ${formatMoney(e.priceCents)}</span>
+                  ${badge}
+                </div>
+              </div>
+            </article>
+          </li>`;
+      };
+
+      async function load() {
+        const id = ++requestId;
+        const params = new URLSearchParams(new FormData(form));
+        for (const [k, v] of [...params]) if (!v) params.delete(k);
+
+        container.innerHTML = '<div class="event-grid" aria-busy="true" aria-label="Loading events"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+        count.textContent = 'Loading events…';
+
+        try {
+          const { items } = await api(`/events?${params}`);
+          if (id !== requestId) return; // a newer search has started, ignore this one
+          if (items.length === 0) {
+            count.textContent = '';
+            container.innerHTML = `
+              <div class="panel">
+                <h2>No events match your search</h2>
+                <p class="muted">Try another city or category, or clear the filters.</p>
+                <button class="btn secondary" type="button" id="clear">Clear filters</button>
+              </div>`;
+            document.getElementById('clear').addEventListener('click', () => {
+              form.reset();
+              load();
+            });
+            return;
+          }
+          count.textContent = `${items.length} ${items.length === 1 ? 'event' : 'events'}`;
+          container.innerHTML = `<ul class="event-grid" aria-label="Events">${items.map(card).join('')}</ul>`;
+        } catch {
+          if (id !== requestId) return;
+          count.textContent = '';
+          container.innerHTML = `
+            <div class="notice error" role="alert">
+              We couldn't load events right now.
+              <button class="btn small secondary" type="button" id="retry">Try again</button>
+            </div>`;
+          document.getElementById('retry').addEventListener('click', load);
+        }
+      }
+
+      let debounce;
+      form.addEventListener('input', () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(load, 250);
+      });
+      form.addEventListener('submit', (e) => e.preventDefault());
+      load();
+    </script>
+  </body>
+</html>

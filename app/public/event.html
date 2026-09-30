@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Event · Gigbox</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" id="site-header"></header>
+    <main id="main">
+      <p><a href="/">← All events</a></p>
+      <div id="content"><p role="status">Loading event…</p></div>
+    </main>
+
+    <script type="module">
+      import { api, escapeHtml, formatDate, formatMoney, renderHeader, requireLogin } from '/js/common.js';
+
+      const user = await requireLogin();
+      renderHeader(user, 'events');
+
+      const content = document.getElementById('content');
+      const eventId = new URLSearchParams(location.search).get('id');
+
+      let event, config;
+      try {
+        [event, config] = await Promise.all([api(`/events/${encodeURIComponent(eventId)}`), api('/config')]);
+      } catch (err) {
+        content.innerHTML = `<div class="notice error" role="alert">${
+          err.status === 404 ? 'We couldn\'t find that event.' : 'We couldn\'t load this event right now.'
+        }</div>`;
+        throw err;
+      }
+
+      document.title = `${event.name} · Gigbox`;
+      const state = { quantity: 1, promo: null };
+      const maxAllowed = () => Math.min(config.maxTicketsPerOrder, event.remaining);
+
+      content.innerHTML = `
+        <div class="detail">
+          <section>
+            <span class="badge category">${escapeHtml(event.category)}</span>
+            <h1>${escapeHtml(event.name)}</h1>
+            <p class="muted">${escapeHtml(event.artist)}</p>
+            <ul class="facts">
+              <li><strong>When:</strong> <time datetime="${event.startsAt}">${formatDate(event.startsAt)}</time></li>
+              <li><strong>Where:</strong> ${escapeHtml(event.venue)}, ${escapeHtml(event.city)}</li>
+              <li><strong>Price:</strong> ${formatMoney(event.priceCents)} per ticket</li>
+              <li id="availability"></li>
+            </ul>
+          </section>
+
+          <section class="panel" aria-labelledby="buy-heading">
+            <h2 id="buy-heading">Get tickets</h2>
+            <div id="buy-area"></div>
+          </section>
+        </div>`;
+
+      const buyArea = document.getElementById('buy-area');
+      const availability = document.getElementById('availability');
+
+      function renderAvailability() {
+        availability.innerHTML = event.soldOut
+          ? '<span class="badge soldout">Sold out</span>'
+          : event.remaining <= 10
+            ? `<span class="badge low">Only ${event.remaining} left</span>`
+            : `<span class="muted">${event.remaining} tickets available</span>`;
+      }
+
+      function renderSoldOut() {
+        buyArea.innerHTML = `
+          <p>This event is sold out.</p>
+          <button class="btn" type="button" disabled>Sold out</button>`;
+      }
+
+      function renderForm() {
+        if (event.soldOut) return renderSoldOut();
+        buyArea.innerHTML = `
+          <form id="buy-form" novalidate>
+            <div class="field">
+              <label for="quantity">Tickets</label>
+              <div class="qty">
+                <button type="button" id="dec" aria-label="Remove one ticket">−</button>
+                <input id="quantity" name="quantity" type="number" inputmode="numeric" min="1" max="${maxAllowed()}" value="${state.quantity}" aria-describedby="qty-hint" />
+                <button type="button" id="inc" aria-label="Add one ticket">+</button>
+              </div>
+              <p class="hint" id="qty-hint">Maximum ${config.maxTicketsPerOrder} tickets per order.</p>
+            </div>
+
+            <div class="field">
+              <label for="promo">Promo code</label>
+              <div class="promo-row">
+                <input id="promo" name="promo" autocomplete="off" />
+                <button class="btn secondary small" type="button" id="apply-promo">Apply</button>
+              </div>
+              <p id="promo-message" class="hint" role="status" aria-live="polite"></p>
+            </div>
+
+            <dl class="summary" aria-label="Price summary">
+              <dt id="tickets-label"></dt><dd data-testid="tickets-subtotal"></dd>
+              <dt>Booking fee</dt><dd data-testid="booking-fee"></dd>
+              <dt class="discount-row" hidden>Discount</dt><dd class="discount-row" data-testid="discount" hidden></dd>
+              <dt class="total">Total</dt><dd class="total" data-testid="order-total"></dd>
+            </dl>
+
+            <div id="buy-error" class="notice error" role="alert" hidden></div>
+            <button class="btn" type="submit" id="buy"></button>
+          </form>`;
+
+        const form = document.getElementById('buy-form');
+        const qty = document.getElementById('quantity');
+        const promoInput = document.getElementById('promo');
+        const promoMsg = document.getElementById('promo-message');
+
+        const setQuantity = (n) => {
+          const clamped = Math.max(1, Math.min(maxAllowed(), Number.isFinite(n) ? Math.trunc(n) : 1));
+          state.quantity = clamped;
+          qty.value = String(clamped);
+          updateSummary();
+        };
+
+        document.getElementById('dec').addEventListener('click', () => setQuantity(state.quantity - 1));
+        document.getElementById('inc').addEventListener('click', () => setQuantity(state.quantity + 1));
+        qty.addEventListener('change', () => setQuantity(Number(qty.value)));
+
+        document.getElementById('apply-promo').addEventListener('click', async () => {
+          const code = promoInput.value.trim();
+          state.promo = null;
+          promoMsg.className = 'hint';
+          if (!code) {
+            promoMsg.textContent = 'Enter a code first.';
+            return updateSummary();
+          }
+          try {
+            state.promo = await api('/promo/validate', { method: 'POST', body: JSON.stringify({ code }) });
+            promoMsg.textContent = `${state.promo.code} applied: ${state.promo.percentOff}% off tickets.`;
+          } catch (err) {
+            promoMsg.textContent = err.message;
+          }
+          updateSummary();
+        });
+
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const errorBox = document.getElementById('buy-error');
+          const button = document.getElementById('buy');
+          errorBox.hidden = true;
+          button.disabled = true;
+          button.textContent = 'Processing…';
+          try {
+            const order = await api('/orders', {
+              method: 'POST',
+              body: JSON.stringify({ eventId: event.id, quantity: state.quantity, promoCode: state.promo?.code }),
+            });
+            location.assign(`/confirmation?order=${encodeURIComponent(order.id)}`);
+          } catch (err) {
+            if (err.status === 409) {
+              // Someone else bought tickets in the meantime: refresh availability and let the user adjust
+              event = await api(`/events/${encodeURIComponent(event.id)}`);
+              renderAvailability();
+              renderForm();
+              const box = document.getElementById('buy-error');
+              if (box) {
+                box.textContent = `Sorry, those tickets just sold. ${event.soldOut ? '' : 'Please choose again.'}`.trim();
+                box.hidden = false;
+              }
+              return;
+            }
+            errorBox.textContent = 'Something went wrong and you have not been charged. Please try again.';
+            errorBox.hidden = false;
+            button.disabled = false;
+            updateSummary();
+          }
+        });
+
+        setQuantity(Math.min(state.quantity, maxAllowed()));
+      }
+
+      function updateSummary() {
+        const subtotal = event.priceCents * state.quantity;
+        const discount = state.promo ? Math.round((subtotal * state.promo.percentOff) / 100) : 0;
+        const fees = config.feePerTicketCents * state.quantity;
+
+        document.getElementById('tickets-label').textContent = `${state.quantity} × ${formatMoney(event.priceCents)}`;
+        document.querySelector('[data-testid="tickets-subtotal"]').textContent = formatMoney(subtotal);
+        document.querySelector('[data-testid="booking-fee"]').textContent = formatMoney(fees);
+        document.querySelectorAll('.discount-row').forEach((el) => (el.hidden = !discount));
+        document.querySelector('[data-testid="discount"]').textContent = `−${formatMoney(discount)}`;
+        document.querySelector('[data-testid="order-total"]').textContent = formatMoney(subtotal - discount + fees);
+
+        document.getElementById('dec').disabled = state.quantity <= 1;
+        document.getElementById('inc').disabled = state.quantity >= maxAllowed();
+        const buy = document.getElementById('buy');
+        buy.textContent = `Buy ${state.quantity} ${state.quantity === 1 ? 'ticket' : 'tickets'}`;
+      }
+
+      renderAvailability();
+      renderForm();
+    </script>
+  </body>
+</html>

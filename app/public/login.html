@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Log in · Gigbox</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="inner"><a class="logo" href="/">gig<span>box</span></a></div>
+    </header>
+    <main id="main">
+      <div class="login-wrap panel">
+        <h1>Log in</h1>
+        <p class="muted">Log in to find tickets and manage your orders.</p>
+        <div id="login-error" class="notice error" role="alert" hidden></div>
+        <form id="login-form" novalidate>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <button class="btn" type="submit">Log in</button>
+        </form>
+        <p class="hint">Demo account: maya@gigbox.test / Gigbox#2026</p>
+      </div>
+    </main>
+    <script type="module">
+      import { api, safeNext } from '/js/common.js';
+
+      const form = document.getElementById('login-form');
+      const errorBox = document.getElementById('login-error');
+      const showError = (msg) => {
+        errorBox.textContent = msg;
+        errorBox.hidden = false;
+      };
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorBox.hidden = true;
+        const email = form.email.value.trim();
+        const password = form.password.value;
+        if (!email || !password) return showError('Enter your email and password.');
+
+        try {
+          await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+          location.assign(safeNext(new URLSearchParams(location.search).get('next')));
+        } catch (err) {
+          showError(err.status === 401 ? 'That email and password combination is not right.' : 'Could not log in. Please try again.');
+        }
+      });
+    </script>
+  </body>
+</html>

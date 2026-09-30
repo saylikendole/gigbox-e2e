@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My orders · Gigbox</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" id="site-header"></header>
+    <main id="main">
+      <h1>My orders</h1>
+      <div id="toast" class="notice success" role="status" hidden></div>
+      <div id="content"><p role="status">Loading your orders…</p></div>
+
+      <dialog id="cancel-dialog" aria-labelledby="cancel-title">
+        <h2 id="cancel-title">Cancel this order?</h2>
+        <p id="cancel-text"></p>
+        <div class="dialog-actions">
+          <button class="btn secondary" type="button" id="keep">Keep my tickets</button>
+          <button class="btn" type="button" id="confirm-cancel">Yes, cancel order</button>
+        </div>
+      </dialog>
+    </main>
+
+    <script type="module">
+      import { api, escapeHtml, formatDate, formatMoney, renderHeader, requireLogin } from '/js/common.js';
+
+      const user = await requireLogin();
+      renderHeader(user, 'orders');
+
+      const content = document.getElementById('content');
+      const toast = document.getElementById('toast');
+      const dialog = document.getElementById('cancel-dialog');
+      let pending = null;
+
+      const row = (o) => `
+        <li class="panel order" data-order-id="${o.id}">
+          <div>
+            <h2>${escapeHtml(o.event.name)}</h2>
+            <p class="muted">${formatDate(o.event.startsAt)} · ${escapeHtml(o.event.venue)}, ${escapeHtml(o.event.city)}</p>
+            <p>${o.quantity} ${o.quantity === 1 ? 'ticket' : 'tickets'} · ${formatMoney(o.totalCents)}</p>
+          </div>
+          <div>
+            <span class="badge ${o.status}">${o.status === 'confirmed' ? 'Confirmed' : 'Cancelled'}</span>
+            ${
+              o.status !== 'confirmed'
+                ? ''
+                : o.cancellable
+                  ? `<p><button class="btn secondary small" type="button" data-cancel="${o.id}" aria-label="Cancel order for ${escapeHtml(o.event.name)}">Cancel order</button></p>`
+                  : '<p class="hint">Cancellation closes 48 hours before the event.</p>'
+            }
+          </div>
+        </li>`;
+
+      async function load() {
+        const { items } = await api('/orders');
+        if (items.length === 0) {
+          content.innerHTML = `<div class="panel"><p>You haven't bought any tickets yet.</p><p><a href="/">Browse events</a></p></div>`;
+          return;
+        }
+        content.innerHTML = `<ul class="order-list" aria-label="Orders">${items.map(row).join('')}</ul>`;
+        content.querySelectorAll('[data-cancel]').forEach((btn) =>
+          btn.addEventListener('click', () => {
+            pending = items.find((o) => o.id === btn.dataset.cancel);
+            document.getElementById('cancel-text').textContent =
+              `Your ${pending.quantity} ${pending.quantity === 1 ? 'ticket' : 'tickets'} for ${pending.event.name} will be released and you'll get a full refund of ${formatMoney(pending.totalCents)}.`;
+            dialog.showModal();
+          }),
+        );
+      }
+
+      document.getElementById('keep').addEventListener('click', () => dialog.close());
+      document.getElementById('confirm-cancel').addEventListener('click', async () => {
+        dialog.close();
+        try {
+          const cancelled = await api(`/orders/${encodeURIComponent(pending.id)}/cancel`, { method: 'POST' });
+          toast.className = 'notice success';
+          toast.textContent = `Order cancelled. ${formatMoney(cancelled.totalCents)} will be refunded to your card.`;
+        } catch (err) {
+          toast.className = 'notice error';
+          toast.textContent = err.message;
+        }
+        toast.hidden = false;
+        await load();
+      });
+
+      try {
+        await load();
+      } catch {
+        content.innerHTML = '<div class="notice error" role="alert">We couldn\'t load your orders right now.</div>';
+      }
+    </script>
+  </body>
+</html>

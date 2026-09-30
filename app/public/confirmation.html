@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Order confirmed · Gigbox</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" id="site-header"></header>
+    <main id="main">
+      <div id="content"><p role="status">Loading your order…</p></div>
+    </main>
+    <script type="module">
+      import { api, escapeHtml, formatDate, formatMoney, renderHeader, requireLogin } from '/js/common.js';
+
+      const user = await requireLogin();
+      renderHeader(user, 'orders');
+      const content = document.getElementById('content');
+
+      try {
+        const order = await api(`/orders/${encodeURIComponent(new URLSearchParams(location.search).get('order'))}`);
+        content.innerHTML = `
+          <div class="panel">
+            <h1>You're going!</h1>
+            <p>Your tickets for <strong>${escapeHtml(order.event.name)}</strong> are confirmed.</p>
+            <dl class="summary" aria-label="Order details">
+              <dt>Order number</dt><dd data-testid="order-number">${escapeHtml(order.id)}</dd>
+              <dt>When</dt><dd>${formatDate(order.event.startsAt)}</dd>
+              <dt>Where</dt><dd>${escapeHtml(order.event.venue)}, ${escapeHtml(order.event.city)}</dd>
+              <dt>Tickets</dt><dd data-testid="order-quantity">${order.quantity}</dd>
+              <dt class="total">Total paid</dt><dd class="total" data-testid="order-total">${formatMoney(order.totalCents)}</dd>
+            </dl>
+            <p><a class="btn" href="/orders">View my orders</a></p>
+          </div>`;
+      } catch {
+        content.innerHTML = '<div class="notice error" role="alert">We couldn\'t find that order.</div>';
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "gigbox-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end UI test suite for Gigbox, an event ticketing web app. Playwright + TypeScript.",
+  "author": "Sayli Kendole",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx app/server/server.ts",
+    "start:test": "cross-env ENABLE_TEST_ROUTES=true tsx app/server/server.ts",
+    "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "test:a11y": "playwright test --grep @a11y",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --project=chromium --headed",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.3",
+    "cross-env": "^10.1.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
