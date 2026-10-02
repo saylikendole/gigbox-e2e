@@ -13,13 +13,13 @@ A Playwright + TypeScript test suite for **Gigbox**, a small concert and event t
 
 ## What's in it
 
-- **55 tests** across 7 spec files on Chromium, with the 7 `@smoke` tests also running on Firefox and a Pixel 7 viewport
+- **57 tests** across 7 spec files on Chromium, with the 7 `@smoke` tests also running on Firefox and a Pixel 7 viewport
 - **Page Object Model** with fixtures, so tests read like user stories
 - **Log in once** through the real form in a setup project, and reuse the session
 - **Per-test data** created through test-only endpoints, so tests run in parallel without touching each other's stock or orders
 - **Network mocking** for failures that are hard to trigger for real: server errors, slow responses, dropped connections mid-payment
 - **Accessibility:** axe-core scans against WCAG 2.1 AA, plus a keyboard-only purchase and dialog focus checks
-- **API rule checks** that confirm the server enforces what the UI shows, which is how [BUG-001](docs/bugs/BUG-001-ticket-limit-not-enforced.md) was found
+- **API rule checks** that confirm the server enforces what the UI shows, which is how [BUG-001](docs/bugs/BUG-001-ticket-limit-not-enforced.md) was found (now fixed)
 - **CI** with two parallel shards, merged into one HTML report published to GitHub Pages
 
 ## Quick start
@@ -56,19 +56,19 @@ Demo login: `maya@gigbox.test` / `Gigbox#2026`
 | Orders | Cancel with refund and restock, the 48-hour rule at 47 and 49 hours, users only see their own orders | `orders.spec.ts` |
 | Resilience | 500 with retry, loading state, empty catalogue, connection drop during payment, HTML in data never executes (XSS) | `resilience.spec.ts` |
 | Accessibility | WCAG 2.1 AA on every page and the cancel dialog, keyboard-only purchase, focus and Escape in the dialog | `accessibility.spec.ts` |
-| API rules | Ticket limit (BUG-001), client can't set its own price, expired promo, other users' orders, overselling | `api-rules.spec.ts` |
+| API rules | Ticket limit at 6/7/50 (BUG-001), client can't set its own price, expired promo, other users' orders, overselling | `api-rules.spec.ts` |
 
 Why these areas and not others: [docs/TEST-STRATEGY.md](docs/TEST-STRATEGY.md).
 
-## The bug this suite found
+## The bug this suite found, and the fix
 
-The event page won't let you pick more than 6 tickets. The `+` button disables and typed numbers get corrected. Every UI test for that passes.
+The event page won't let you pick more than 6 tickets. The `+` button disables and typed numbers get corrected. Every UI test for that passed.
 
-The API doesn't check the limit at all. One request from the browser console buys 50 tickets. On a ticketing site that's the scalping hole bots use to empty a show.
+The API didn't check the limit at all. One request from the browser console bought 50 tickets. On a ticketing site that's the scalping hole bots use to empty a show.
 
-No UI test could find this, because the UI works. The API-level test in `api-rules.spec.ts` did. It's marked `test.fail()`, so the suite stays green while the bug is open, and the moment someone fixes it Playwright flags an unexpected pass as the prompt to close the bug. Full write-up: [BUG-001](docs/bugs/BUG-001-ticket-limit-not-enforced.md).
+No UI test could find this, because the UI worked. The API-level tests in `api-rules.spec.ts` did. The fix adds the same limit to `POST /api/orders`, using the same constant the UI reads. Boundary tests at 6, 7 and 50 tickets now guard it. Before trusting them, I ran them against the old code and confirmed they failed. Full write-up: [BUG-001](docs/bugs/BUG-001-ticket-limit-not-enforced.md).
 
-Writing the suite also turned up a smaller real defect in the app (the "tickets just sold" message had nowhere to render on the sold-out view), which is fixed in the git history.
+Writing the suite also turned up a smaller defect in the app: the "tickets just sold" message had nowhere to render on the sold-out view. That's fixed too (see the git history).
 
 ## Design decisions
 

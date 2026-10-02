@@ -46,9 +46,9 @@ Most tests are UI tests on purpose, because that's what this repo demonstrates. 
 - On CI, one retry with a trace. A test that needs its retry shows as "flaky" in the report, so it gets investigated rather than hidden. Locally, retries are off.
 - Before publishing, the suite was run three times in a row with retries off: all runs passed.
 
-## Known bugs
+## Bugs found
 
-Known bugs stay in the suite, marked `test.fail()` and linked to a written report. The suite stays green, the bug stays visible, and a fix is detected automatically. See [BUG-001](bugs/BUG-001-ticket-limit-not-enforced.md).
+[BUG-001](bugs/BUG-001-ticket-limit-not-enforced.md), the 6-ticket limit being enforced only in the browser, was found by the API rule tests. It's fixed. Every bug fix comes with a regression test, and I check that the test fails against the old code before trusting it.
 
 The suite also found a real defect while it was being written: when another customer bought the last tickets first, the "tickets just sold" message had nowhere to render. That was fixed in the app (see the git history).
 

@@ -1,4 +1,4 @@
-# BUG-001: The 6-ticket limit is only enforced in the browser
+# BUG-001: The 6-ticket limit was only enforced in the browser
 
 | Field | Value |
 | --- | --- |
@@ -6,15 +6,15 @@
 | Priority | P1 |
 | Component | `POST /api/orders` |
 | Found by | `tests/specs/api-rules.spec.ts` |
-| Status | Open, documented in the suite with `test.fail()` |
+| Status | **Fixed**, guarded by boundary tests at 6, 7 and 50 tickets |
 
 ## Summary
 
-The event page stops you at 6 tickets per order: the `+` button disables at 6, and typing a bigger number is corrected back to 6. The API behind it has no such limit. Anyone who sends the request directly (browser dev tools, curl, a script) can buy as many tickets as are left, in a single order.
+The event page stops you at 6 tickets per order: the `+` button disables at 6, and typing a bigger number is corrected back to 6. The API behind it had no such limit. Anyone who sent the request directly (browser dev tools, curl, a script) could buy as many tickets as were left, in a single order.
 
-For a ticketing site this is the classic scalping hole: a bot can take a whole show's tickets in one request.
+For a ticketing site that's the classic scalping hole: a bot can take a whole show's tickets in one request.
 
-## Steps to reproduce
+## Steps to reproduce (before the fix)
 
 1. Log in as any user.
 2. Open the browser dev tools and run:
@@ -27,27 +27,21 @@ await fetch('/api/orders', {
 }).then((r) => r.status);
 ```
 
-Or run the automated check:
-
-```bash
-npx playwright test tests/specs/api-rules.spec.ts --project=chromium
-```
-
 ## Expected result
 
-`400 Bad Request`, with a message saying at most 6 tickets can be bought per order. Same rule as the UI.
+`400 Bad Request`, with a message saying 1 to 6 tickets can be bought per order. Same rule as the UI.
 
-## Actual result
+## Actual result (before the fix)
 
-`201 Created`. The order for 50 tickets goes through and 50 tickets are taken off sale.
+`201 Created`. The order for 50 tickets went through and 50 tickets were taken off sale.
 
 ## Root cause
 
-The limit exists on the server (`MAX_TICKETS_PER_ORDER` in `app/server/db.ts`). It's published to the client through `GET /api/config` so the UI can show it, but `POST /api/orders` in `app/server/api.ts` never checks it. The quantity validation only rejects values below 1.
+The limit already existed on the server (`MAX_TICKETS_PER_ORDER` in `app/server/db.ts`). It was sent to the browser through `GET /api/config` so the UI could show it, but `POST /api/orders` never checked it. The quantity validation only rejected values below 1.
 
-## Suggested fix
+## Fix
 
-Add the upper bound to the existing quantity check in `POST /api/orders`:
+`POST /api/orders` in `app/server/api.ts` now checks the upper bound too:
 
 ```ts
 if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
@@ -55,12 +49,22 @@ if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_TICKETS_PER_OR
 }
 ```
 
-A per-user limit per event would be worth discussing with the product owner too, since several orders of 6 would still get around this.
+The UI and the API now read the limit from the same constant, so they can't drift apart again.
 
-## How we'll know it's fixed
+## Verification
 
-The test is marked `test.fail()`, so it passes while the bug exists. Once the API is fixed, the test starts passing for real, Playwright reports that as an unexpected pass, and that's the signal to remove `test.fail()` and close this bug.
+| Request | Before | After |
+| --- | --- | --- |
+| 6 tickets | `201` | `201` |
+| 7 tickets | `201` | `400`, no tickets taken off sale |
+| 50 tickets | `201` | `400`, no tickets taken off sale |
+
+I ran the new tests against the old code first, and the 7- and 50-ticket cases failed as expected. With the fix, the whole suite passes.
 
 ## Why the UI tests didn't catch it
 
-They couldn't. Every UI test for quantity limits passes, because the UI does its job. This is why `api-rules.spec.ts` exists: any rule that matters has to be checked where it's enforced, not just where it's displayed.
+They couldn't. Every UI test for quantity limits passed, because the UI did its job. Any rule that matters has to be tested where it's enforced, not just where it's displayed, and that's why `api-rules.spec.ts` exists.
+
+## Open question for the product owner
+
+The limit is per order. Someone could still place several orders of 6. A per-customer limit per event would close that, but it's a product decision, so I've raised it rather than built it.
