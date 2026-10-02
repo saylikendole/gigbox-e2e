@@ -104,8 +104,9 @@ api.post('/orders', requireUser, (req, res) => {
   if (new Date(event.startsAt).getTime() <= Date.now()) {
     throw new ApiError(422, 'EVENT_STARTED', 'This event has already started');
   }
-  if (!Number.isInteger(quantity) || quantity < 1) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'Quantity must be a whole number of at least 1');
+  // The same limit the UI shows. Enforced here too, because the API can be called without the UI (BUG-001).
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
+    throw new ApiError(400, 'VALIDATION_ERROR', `You can buy between 1 and ${MAX_TICKETS_PER_ORDER} tickets per order`);
   }
   if (remaining(event) <= 0) throw new ApiError(409, 'SOLD_OUT', 'This event is sold out');
   if (quantity > remaining(event)) {
