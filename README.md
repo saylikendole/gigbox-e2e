@@ -72,6 +72,17 @@ Writing the suite also turned up a smaller real defect in the app (the "tickets 
 
 ## Design decisions
 
+**Page Object Model.** Each page has a class in `tests/pages/` that owns its locators and actions. `LoginPage`, `EventsPage`, `EventPage` and `OrdersPage` cover the pages, and `Header` is a shared component that appears on all of them. Fixtures hand them to tests ready to use, so specs describe what the user does:
+
+```ts
+await eventPage.goto(event.id);
+await eventPage.addTickets(1);
+await eventPage.applyPromo('GIG10');
+await expect(eventPage.total).toHaveText(eur(expected.total));
+```
+
+Assertions stay in the specs, not in the page objects, so a reader can see what each test checks. When the UI changes, the fix happens in one page object.
+
 **Locators follow what the user sees.** `getByRole('button', { name: 'Buy 2 tickets' })` over CSS selectors. If a test can't find an element by its role and name, a screen reader user probably can't either. `data-testid` is only used for price values, which have no accessible name of their own.
 
 **Money is checked against an independent calculation.** `tests/support/pricing.ts` works out the expected total from the business rules (promo discounts tickets, never the booking fee). Tests compare the UI and the confirmation page against it. Copying numbers from the UI into assertions would only prove the UI agrees with itself.
